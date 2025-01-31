@@ -2,7 +2,10 @@
 
 [![Python](https://img.shields.io/badge/python-3.11.6-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.75.0-red)](https://fastapi.tiangolo.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-lagchain-orange)](https://python.langchain.com/)
+[![LangChain OpenAI](https://img.shields.io/badge/LangChain-OpenAI-yellow)](https://python.langchain.com/en/latest/modules/llms/integrations/openai.html)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://opensource.org/licenses/MIT)
+
 ## Описание проекта
 
 MS_ITMO — это FastAPI приложение, предназначенное для обработки запросов, связанных с Университетом ИТМО. Приложение использует машинное обучение для анализа текста и предоставления релевантных ответов на вопросы пользователей. Оно способно различать релевантные и нерелевантные вопросы, а также суммировать контент из найденных источников.
@@ -16,16 +19,21 @@ MS_ITMO — это FastAPI приложение, предназначенное 
 
 ### Структура проекта
 ```
-ms_itmo/
+MS_ITMO/
 ├── .env
 ├── .gitignore
-├── app/
-│ ├── init .py
-│ ├── main.py
-│ ├── models.py
-│ ├── utils.py
-│ └── config.py
-└── requirements.txt
+├── .dockerignore
+├── docker-compose.yml
+├── Dockerfile
+├── README.md
+├── requirements.txt
+├── venv/
+└── app/
+    ├── __init__.py
+    ├── main.py
+    ├── models.py
+    ├── utils.py
+    └── config.py
 ```
 
 ### Запуск проекта локально
@@ -37,7 +45,7 @@ git clone https://github.com/lild1tz/ms_itmo.git
 cd ms_itmo
 python -m venv venv
 source venv/bin/activate  # Для macOS/Linux
-# venv\Scripts\activate  # Для Windows
+#      venv\Scripts\activate  # Для Windows
 ```
 #### 2. Установка зависимостей
 ```sh

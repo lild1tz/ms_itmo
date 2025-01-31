@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from app.models import QueryRequest, ResponseModel
+from app.config import Config
 from app.utils import (
     is_relevant_to_itmo,  # Функция для проверки релевантности запроса к ИТМО
     process_question_options,  # Функция для обработки вопроса и получения вариантов ответов
@@ -7,7 +8,7 @@ from app.utils import (
     generate_llm_response,  # Функция для генерации ответа с использованием LLM
     summarize_contents  # Функция для суммаризации контента
 )
-import asyncio
+
 
 # Создание экземпляра FastAPI
 app = FastAPI()
@@ -22,7 +23,7 @@ async def handle_request(request: QueryRequest) -> ResponseModel:
         return ResponseModel(
             id=request.id,  # Идентификатор запроса
             answer=None,  # Ответ отсутствует
-            reasoning=reason,  # Причина, почему вопрос не релевантен
+            reasoning=reason + f' Ответ сгенерирован моделью {Config.OPENAI_MODEL_NAME}',  # Причина, почему вопрос не релевантен
             sources=[]  # Список источников пустой
         )
     
@@ -39,7 +40,7 @@ async def handle_request(request: QueryRequest) -> ResponseModel:
         return ResponseModel(
             id=request.id,  # Идентификатор запроса
             answer=None,  # Ответ отсутствует
-            reasoning=summary,  # Суммаризация контента
+            reasoning=summary + f' Ответ сгенерирован моделью {Config.OPENAI_MODEL_NAME}',  # Суммаризация контента
             sources=sources[:3]  # Первые три источника
         )
     
@@ -53,7 +54,7 @@ async def handle_request(request: QueryRequest) -> ResponseModel:
     return ResponseModel(
         id=request.id,  # Идентификатор запроса
         answer=response['answer'],  # Генерированный ответ
-        reasoning=response['reasoning'],  # Причина выбора ответа
+        reasoning=response['reasoning'] + f' Ответ сгенерирован моделью {Config.OPENAI_MODEL_NAME}',  # Причина выбора ответа
         sources=sources[:3]  # Первые три источника
     )
 
