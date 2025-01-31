@@ -7,88 +7,85 @@ from langchain_community.utilities import GoogleSerperAPIWrapper
 from langchain_openai import ChatOpenAI
 from app.config import Config
 import asyncio
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
+import logging
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 search = GoogleSerperAPIWrapper(serper_api_key=Config.SERPER_API_KEY)
 llm = ChatOpenAI(
-    temperature=0,
+    temperature=0.1,
     openai_api_key=Config.OPENAI_API_KEY,
     base_url=Config.OPENAI_BASE_URL
 )
 
+# Создаем SSL-контекст один раз
+ssl_ctx = ssl.create_default_context()
+ssl_ctx.check_hostname = False
+ssl_ctx.verify_mode = ssl.CERT_NONE
 
 async def fetch_url_content(session: aiohttp.ClientSession, url: str) -> Tuple[str, str]:
     """Функция для получения и парсинга содержимого URL"""
     try:
-        # Создаем кастомный SSL-контекст
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        
         async with session.get(url, timeout=10, ssl=ssl_ctx) as response:
             if response.status == 200:
                 content_type = response.headers.get('Content-Type', '').lower()
-                
-                # Проверяем, является ли контент HTML или текстом
                 if 'text/html' in content_type or 'text/plain' in content_type:
-                    # Получаем кодировку из заголовков ответа, если она указана
                     charset = response.charset if response.charset else 'utf-8'
-                    
                     try:
-                        # Декодируем текст с использованием указанной кодировки
                         text = await response.text(encoding=charset)
                     except UnicodeDecodeError:
-                        # Если возникает ошибка декодирования, пробуем использовать 'latin-1'
                         text = await response.text(encoding='latin-1')
-                    
                     return url, text
-                
-                # Если это не HTML или текст, возвращаем пустую строку
                 return url, ""
             else:
-                print(f"Failed to retrieve content from {url}, status code: {response.status}")
+                logger.warning(f"Failed to retrieve content from {url}, status code: {response.status}")
                 return url, ""
     except Exception as e:
-        print(f"Error fetching {url}: {str(e)}")
+        logger.error(f"Error fetching {url}: {str(e)}")
         return url, ""
 
 def parse_content(html: str, word_limit: int = 350) -> str:
     """Функция для парсинга и обрезки содержимого страницы"""
     try:
         soup = BeautifulSoup(html, 'html.parser')
-        
         # Удаление ненужных элементов
-        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'form']):
+        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'form', 'iframe', 'img', 'audio', 'video']):
             element.decompose()
-        
-        # Извлечение текста и ограничение количества слов
+
         text = ' '.join(soup.stripped_strings)
         words = text.split()
         return ' '.join(words[:word_limit])
     except Exception as e:
-        print(f"Error parsing content: {str(e)}")
+        logger.error(f"Error parsing content: {str(e)}")
         return ""
 
 async def is_relevant_to_itmo(question: str) -> Tuple[bool, str]:
     prompt = f"""Проанализируй вопрос и определи его отношение к Университету ИТМО. Ответь строго в JSON:
-    {{
-        "relevant": boolean,
-        "reason": "краткое объяснение на русском языке"
-    }}
-    Вопрос: {question}"""
-    
+{{
+  "relevant": boolean,
+  "reason": "краткое объяснение на русском языке"
+}}
+Вопрос: {question}"""
     try:
         response = await llm.ainvoke(prompt)
         result = json.loads(response.content)
         return result.get('relevant', False), result.get('reason', '')
     except Exception as e:
+        logger.error(f"Ошибка проверки релевантности: {str(e)}")
         return False, f"Ошибка проверки релевантности: {str(e)}"
 
 async def process_question_options(query: str) -> Tuple[str, List[str]]:
+    """Ищем варианты ответов (формат: построчные варианты вида '1. ... 2. ...')."""
     options = re.findall(r'\n\d+\.\s*(.+?)(?=\n\d+\.|\Z)', query, flags=re.DOTALL)
+    # Ограничимся 10 вариантами
     if len(options) > 10:
         options = options[:10]
+
+    # Если нашли варианты, переформатируем вопрос
+    if options:
         parts = re.split(r'\n\d+\.', query)
         new_query = parts[0] + '\n' + '\n'.join(
             f"{i+1}. {opt.strip()}" for i, opt in enumerate(options)
@@ -97,37 +94,47 @@ async def process_question_options(query: str) -> Tuple[str, List[str]]:
     return query, options
 
 async def generate_llm_response(query: str, context: str, options: List[str]) -> dict:
+    """Генерация ответа с учётом вариантов (если есть)."""
     answer_instruction = (
-        "answer: номер варианта (1-10) или 1, если варианты ответа есть ВСЕГДА ВОЗВРАЩАЙ ЧИСЛО И ТОЛЬКО ЕГО" if options 
+        "answer: номер варианта (1-10) или 1, если варианты ответа есть ВСЕГДА ВОЗВРАЩАЙ ЧИСЛО И ТОЛЬКО ЕГО"
+        if options
         else "answer: всегда null"
     )
-    
+
     prompt = f"""Отвечай строго в JSON. Вопрос: {query}
-    Контекст: {context}
-    Требования:
-    - {answer_instruction}
-    - reasoning: краткое обоснование на русском
-    - если варианты ответа есть, ВСЕГДА возвращай число в поле answer
-    - если информации недостаточно, выбери наиболее вероятный вариант
-    """
-    
+Контекст: {context}
+Требования:
+- {answer_instruction}
+- reasoning: краткое обоснование на русском
+- если нет вариантов ответа - СТРОГО NULL
+- если варианты ответа есть, ВСЕГДА возвращай число в поле answer
+- если информации недостаточно, выбери наиболее вероятный вариант
+"""
+
     try:
         response = await llm.ainvoke(prompt)
         result = json.loads(response.content)
+
         if options:
+            # Если варианты ответа есть
             answer = result.get('answer')
             if answer is None:
                 answer = 1
             else:
+                # Гарантируем, что ответ в пределах списка вариантов
                 answer = max(1, min(int(answer), len(options)))
         else:
+            # Если вариантов ответа нет
             answer = None
+
         return {
             "answer": answer,
             "reasoning": result.get('reasoning', 'Обоснование отсутствует'),
             "sources": []
         }
+
     except Exception as e:
+        logger.error(f"Ошибка генерации ответа: {str(e)}")
         return {
             "answer": 1 if options else None,
             "reasoning": f"Ошибка генерации ответа: {str(e)}",
@@ -135,25 +142,45 @@ async def generate_llm_response(query: str, context: str, options: List[str]) ->
         }
 
 async def process_search_results(question: str) -> Tuple[List[str], List[str]]:
-    """Обработка результатов поиска с парсингом контента"""
+    """Обработка результатов поиска с парсингом контента."""
     try:
         search_results = await asyncio.to_thread(search.results, question)
         organic_results = search_results.get('organic', [])[:3]
-        
+
         async with aiohttp.ClientSession() as session:
             tasks = [fetch_url_content(session, res['link']) for res in organic_results if 'link' in res]
             results = await asyncio.gather(*tasks)
-            
-            parsed_contents = []
-            sources = []
-            for url, html in results:
-                if html:
-                    content = parse_content(html)
-                    if content:
-                        parsed_contents.append(content)
-                        sources.append(url)
-                        
-            return parsed_contents, sources
+
+        parsed_contents = []
+        sources = []
+        for url, html in results:
+            if html:
+                content = parse_content(html)
+                if content:
+                    parsed_contents.append(content)
+                    sources.append(url)
+
+        return parsed_contents, sources
     except Exception as e:
-        print(f"Search error: {str(e)}")
+        logger.error(f"Search error: {str(e)}")
         return [], []
+
+async def summarize_contents(contexts: List[str]) -> str:
+    """Суммирование контента из трёх источников с помощью LLM."""
+    # Объединяем тексты (ограничены ~350 слов на источник, т.е. общий объём до ~1050 слов)
+    combined_text = "\n".join(contexts)
+
+    prompt = f"""Проанализируй следующий текст, состоящий из нескольких частей, и кратко суммируй его на русском языке:
+---
+{combined_text}
+---
+Сформулируй 3-4 предложения, отражающие самую суть прочитанного, без потери важных деталей.
+Ответ дай в свободной форме (просто текст).
+"""
+
+    try:
+        response = await llm.ainvoke(prompt)
+        return response.content.strip()
+    except Exception as e:
+        logger.error(f"Ошибка при суммировании контента: {str(e)}")
+        return "Ошибка при суммировании контента"
