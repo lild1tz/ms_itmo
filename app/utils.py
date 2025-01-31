@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 search = GoogleSerperAPIWrapper(serper_api_key=Config.SERPER_API_KEY)
 llm = ChatOpenAI(
-    temperature=0.1,
+    temperature=0.3,
     openai_api_key=Config.OPENAI_API_KEY,
     base_url=Config.OPENAI_BASE_URL
 )

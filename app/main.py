@@ -52,7 +52,7 @@ async def handle_request(request: QueryRequest) -> ResponseModel:
         id=request.id,
         answer=response['answer'],
         reasoning=response['reasoning'],
-        sources=sources[:2]  # Ограничиваем список источников 2-мя ссылками
+        sources=sources[:3]  # Ограничиваем список источников 2-мя ссылками
     )
 
 
