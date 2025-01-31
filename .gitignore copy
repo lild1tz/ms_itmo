@@ -1,0 +1,44 @@
+# Виртуальное окружение
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Локальные настройки
+.env
+.local/
+
+# Сборка и логи
+build/
+dist/
+*.egg-info/
+*.egg
+*.log
+
+# Редакторы и IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Docker
+Dockerfile
+docker-compose.yml
+*.dockerignore
+
+# Бинарные файлы и кэш
+*.pdf
+*.docx
+*.xlsx
+*.pptx
+*.exe
+*.dll
+*.so
+*.dylib
+*.class
+*.jar
+*.war
+*.ear
+
+# Тестовые данные и результаты
+/test_data/
+/results/
