@@ -6,10 +6,5 @@ services:
     container_name: ms_itmo_service
     ports:
       - "8000:8000"
-    # Если нужно прокинуть переменные окружения из .env:
     env_file:
       - .env
-    # Можно также задать переменные вручную, например:
-    # environment:
-    #   OPENAI_API_KEY: "ВАШ_API_КЛЮЧ"
-    #   SERPER_API_KEY: "ВАШ_API_КЛЮЧ"
